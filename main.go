@@ -1,6 +1,14 @@
 package main
 
-import "github.com/gin-gonic/gin"
+import (
+	"context"
+	"github.com/gin-gonic/gin"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
 func main() {
 	r := gin.Default()
@@ -10,5 +18,25 @@ func main() {
 	r.GET("/favicon.ico", func(c *gin.Context) {
 		c.File("favicon.svg")
 	})
-	r.Run("0.0.0.0:27701")
+
+	srv := &http.Server{
+		Addr:    ":27701",
+		Handler: r,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	// graceful shutdown
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+
+	<-c
+	log.Println("Shutting down...")
+	if err := srv.Shutdown(context.Background()); err != nil {
+		log.Fatal(err)
+	}
 }
