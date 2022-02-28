@@ -5,6 +5,7 @@ import (
 	"ankiSyncGo/internal/db"
 	"compress/gzip"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -105,16 +107,46 @@ func main() {
 	r.POST("/sync/meta", func(c *gin.Context) {
 		providedKey := c.Request.FormValue("k")
 
-		var dbSkey string
+		data := struct {
+			Username string
+			Skey     string
+			created  string
+		}{}
 
-		row := db.DB.QueryRow(`SELECT skey FROM sessions WHERE skey=$1`, providedKey)
-		err := row.Scan(&dbSkey)
+		row := db.DB.QueryRow(`SELECT * FROM sessions WHERE skey=$1`, providedKey)
+		err := row.Scan(&data.Skey, &data.Username, &data.created)
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
-		log.Println("Authenticated!")
 
+		collection := struct {
+			Cont    bool   `json:"cont"`
+			HostNum int    `json:"hostNum"`
+			Mod     int    `json:"mod"`
+			Msg     string `json:"msg"`
+			Scm     int64  `json:"scm"`
+			Usn     int    `json:"usn"`
+			Ts      int64  `json:"ts"`
+			Uname   string `json:"uname"`
+		}{
+			true,
+			1,
+			0,
+			"",
+			time.Now().Unix(),
+			0,
+			time.Now().Unix(),
+			data.Username,
+		}
+
+		// Get collection
+		row = db.DB.QueryRow(`SELECT mod, scm, usn FROM col WHERE username=$1`, data.Username)
+		if err := row.Scan(&collection.Mod, &collection.Scm, &collection.Usn); err != nil && err != sql.ErrNoRows {
+			log.Fatal(err)
+		}
+		log.Printf("%+v", collection)
+		c.JSON(200, collection)
 	})
 
 	srv := &http.Server{
