@@ -56,21 +56,13 @@ func main() {
 	}
 	r.POST("/sync/hostKey", func(c *gin.Context) {
 
-		file, _, _ := c.Request.FormFile("data")
-		var b []byte
-
-		// decompress if compressed
-		gr, _ := gzip.NewReader(file)
-		b, _ = ioutil.ReadAll(gr)
-
 		var data struct {
 			U string `json:"u"` // Username
 			P string `json:"p"` // Password
 		}
 
-		if err := json.Unmarshal(b, &data); err != nil {
-			_ = c.AbortWithError(400, errors.New("Did not find username and password"))
-			return
+		if err := getData(c, &data); err != nil {
+			_ = c.AbortWithError(400, errors.New("Unable to unmarshal"))
 		}
 
 		if data.U == "" {
@@ -105,18 +97,9 @@ func main() {
 	})
 
 	r.POST("/sync/meta", func(c *gin.Context) {
-		providedKey := c.Request.FormValue("k")
 
-		data := struct {
-			Username string
-			Skey     string
-			created  string
-		}{}
-
-		row := db.DB.QueryRow(`SELECT * FROM sessions WHERE skey=$1`, providedKey)
-		err := row.Scan(&data.Skey, &data.Username, &data.created)
+		data, err := getSession(c)
 		if err != nil {
-			log.Fatal(err)
 			return
 		}
 
@@ -141,13 +124,22 @@ func main() {
 		}
 
 		// Get collection
-		row = db.DB.QueryRow(`SELECT mod, scm, usn FROM col WHERE username=$1`, data.Username)
+		row := db.DB.QueryRow(`SELECT mod, scm, usn FROM col WHERE username=$1`, data.Username)
 		if err := row.Scan(&collection.Mod, &collection.Scm, &collection.Usn); err != nil && err != sql.ErrNoRows {
 			log.Fatal(err)
 		}
 		log.Printf("%+v", collection)
 		c.JSON(200, collection)
 	})
+
+	//r.POST("/sync/upload", func(c *gin.Context) {
+	//	data, err := getSession(c)
+	//	if err != nil {
+	//		return
+	//	}
+	//
+	//	c.JSON(200, collection)
+	//})
 
 	srv := &http.Server{
 		Addr:    ":27701",
@@ -169,4 +161,34 @@ func main() {
 	if err := srv.Shutdown(context.Background()); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func getSession(c *gin.Context) (session, error) {
+
+	providedKey := c.Request.FormValue("k")
+
+	var data session
+
+	row := db.DB.QueryRow(`SELECT * FROM sessions WHERE skey=$1`, providedKey)
+	err := row.Scan(&data.Skey, &data.Username, &data.created)
+	if err != nil {
+		log.Fatal(err)
+		return session{}, err
+	}
+	return data, nil
+}
+
+func getData(c *gin.Context, target interface{}) error {
+
+	file, _, _ := c.Request.FormFile("data")
+	var b []byte
+
+	// decompress if compressed
+	gr, _ := gzip.NewReader(file)
+	b, _ = ioutil.ReadAll(gr)
+
+	if err := json.Unmarshal(b, target); err != nil {
+		return err
+	}
+	return nil
 }
