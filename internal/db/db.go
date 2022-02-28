@@ -3,14 +3,12 @@ package db
 import (
 	"database/sql"
 	"fmt"
-	"github.com/gin-contrib/sessions/postgres"
 	_ "github.com/lib/pq"
 	"log"
 	"os"
 )
 
 var DB *sql.DB
-var Store postgres.Store
 
 var (
 	host     string
@@ -40,15 +38,18 @@ func Initialize() {
 	DB = db
 
 	// initialize the databases, if they do not exist
+
+	db.Exec(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`)
 	db.Exec(`
 		CREATE TABLE IF NOT EXISTS auth (
 			username VARCHAR(255) NOT NULL PRIMARY KEY,
 			pw VARCHAR(64) NOT NULL);
 	`)
 
-	store, err := postgres.NewStore(db, []byte("secret"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	Store = store
+	db.Exec(`
+		CREATE TABLE IF NOT EXISTS sessions (
+			skey uuid DEFAULT uuid_generate_v4 () PRIMARY KEY ,
+			username VARCHAR(255) UNIQUE NOT NULL,
+		    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);
+	`)
 }

@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"io/ioutil"
@@ -26,7 +25,6 @@ func main() {
 	db.Initialize()
 
 	r := gin.Default()
-	r.Use(sessions.Sessions("sessions", db.Store))
 	r.GET("/", func(c *gin.Context) {
 		c.String(200, "Anki Sync server written in Go 🚀")
 	})
@@ -88,19 +86,35 @@ func main() {
 			return
 		}
 
-		session := sessions.Default(c)
-
-		// TODO: generate actual key
-		session.Set("skey", "12345")
-		session.Set("name", data.U)
-
-		if err := session.Save(); err != nil {
+		_, err := db.DB.Exec("INSERT INTO sessions (username) VALUES ($1)", data.U)
+		if err != nil {
+			log.Println(err)
+		}
+		var skey string
+		row := db.DB.QueryRow(`SELECT skey FROM sessions WHERE username=$1`, data.U)
+		err = row.Scan(&skey)
+		if err != nil {
 			log.Fatal(err)
 		}
 
 		c.JSON(200, struct {
 			Key string `json:"key"`
-		}{"12345"})
+		}{skey})
+	})
+
+	r.POST("/sync/meta", func(c *gin.Context) {
+		providedKey := c.Request.FormValue("k")
+
+		var dbSkey string
+
+		row := db.DB.QueryRow(`SELECT skey FROM sessions WHERE skey=$1`, providedKey)
+		err := row.Scan(&dbSkey)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		log.Println("Authenticated!")
+
 	})
 
 	srv := &http.Server{
