@@ -8,8 +8,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/blockloop/scan"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	_ "github.com/mattn/go-sqlite3"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -132,14 +134,76 @@ func main() {
 		c.JSON(200, collection)
 	})
 
-	//r.POST("/sync/upload", func(c *gin.Context) {
-	//	data, err := getSession(c)
-	//	if err != nil {
-	//		return
-	//	}
-	//
-	//	c.JSON(200, collection)
-	//})
+	r.POST("/sync/upload", func(c *gin.Context) {
+		sesh, err := getSession(c)
+		if err != nil {
+			return
+		}
+
+		file, _, _ := c.Request.FormFile("data")
+		var b []byte
+
+		// decompress if compressed
+		gr, _ := gzip.NewReader(file)
+		b, _ = ioutil.ReadAll(gr)
+		//log.Printf("%+v", string(b))
+
+		// create temporary file to store the sqlite db
+		f, err := ioutil.TempFile("", "anki-sync-go")
+		if err != nil {
+			// TODO: return http error code
+			return
+		}
+
+		// write transmitted db to tempfile
+		f.Write(b)
+
+		sqlite, err := sql.Open("sqlite3", f.Name())
+		if err != nil {
+			// TODO: actual error handling???
+			log.Println(err)
+		}
+
+		// TODO: check integrity of sqlite file
+
+		// delete entries of user first
+		_, err = db.DB.Exec(`DELETE FROM cards WHERE username=$1`, sesh.Username)
+		if err != nil {
+			// TODO: error handling
+			log.Fatal(err)
+		}
+		rows, err := sqlite.Query(`SELECT * FROM cards;`)
+		if err != nil {
+			// TODO: error handling
+			log.Fatal(err)
+		}
+		defer rows.Close()
+
+		var cards []dbCard
+		scan.Rows(&cards, rows)
+
+		for _, card := range cards {
+			// add card to user in our db
+			log.Println(card)
+			// TODO: for the love of god, refactor
+			db.DB.Exec(`INSERT INTO cards ( username, id, nid, did, ord, mod,
+					usn, type, queue, due, ivl, factor, reps, lapses,
+					"left", odue, odid, flags, data
+				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);`,
+				sesh.Username, card.Id, card.Nid, card.Did, card.Ord,
+				card.Mod, card.Usn, card.Type, card.Queue, card.Due, card.Ivl,
+				card.Factor, card.Reps, card.Lapses, card.Left, card.Odue, card.Odid, card.Flags, card.Data)
+		}
+
+		// TODO: the other tables, such as notes, col etc
+
+		///c.JSON(200, collection)
+		c.String(200, "OK")
+	})
+
+	r.POST("/msync/begin", func(c *gin.Context) {
+		
+	})
 
 	srv := &http.Server{
 		Addr:    ":27701",
