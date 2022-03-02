@@ -17,10 +17,12 @@ func AddUser(username, password string) error {
 		return err
 	}
 
-	_, err = db.DB.Exec("INSERT INTO auth (username, pw) VALUES ($1, $2)", username, passwdHash)
-	if err != nil {
-		return err
+	auth := db.Auth{
+		Username: username,
+		Pw:       string(passwdHash),
 	}
+
+	db.DB.Create(auth)
 
 	if err = createUserDir(username); err != nil {
 		return err
@@ -32,12 +34,10 @@ func ValidateUser(username, password string) bool {
 
 	username = strings.ToLower(username)
 
-	row := db.DB.QueryRow("SELECT pw FROM auth WHERE username=$1", username)
-	var dbPasswd string
-	if err := row.Scan(&dbPasswd); err != nil {
-		return false
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(dbPasswd), []byte(password)); err != nil {
+	var auth db.Auth
+	db.DB.First(&auth, "username = ?", username)
+
+	if err := bcrypt.CompareHashAndPassword([]byte(auth.Pw), []byte(password)); err != nil {
 		return false
 	}
 	return true

@@ -5,13 +5,14 @@ import (
 	"ankiSyncGo/internal/db"
 	"compress/gzip"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/blockloop/scan"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
+	uuid "github.com/satori/go.uuid"
+	sqlite2 "gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -58,54 +59,50 @@ func main() {
 	}
 	r.POST("/sync/hostKey", func(c *gin.Context) {
 
-		var data struct {
-			U string `json:"u"` // Username
-			P string `json:"p"` // Password
-		}
+		var data db.Auth
 
-		if err := getData(c, &data); err != nil {
-			_ = c.AbortWithError(400, errors.New("Unable to unmarshal"))
-		}
+		rawData := getData(c)
+		json.Unmarshal(rawData, &data)
 
-		if data.U == "" {
+		if data.Username == "" {
 			_ = c.AbortWithError(401, errors.New("Unauthorized"))
 			return
 		}
 
-		if data.P == "" {
+		if data.Pw == "" {
 			_ = c.AbortWithError(401, errors.New("Unauthorized"))
 			return
 		}
 
-		if !auth.ValidateUser(data.U, data.P) {
+		if !auth.ValidateUser(data.Username, data.Pw) {
 			_ = c.AbortWithError(401, errors.New("Wrong username or password"))
 			return
 		}
 
-		_, err := db.DB.Exec("INSERT INTO sessions (username) VALUES ($1)", data.U)
-		if err != nil {
-			log.Println(err)
-		}
-		var skey string
-		row := db.DB.QueryRow(`SELECT skey FROM sessions WHERE username=$1`, data.U)
-		err = row.Scan(&skey)
-		if err != nil {
-			log.Fatal(err)
-		}
+		sesh := db.Session{Username: data.Username}
+		db.DB.Create(&sesh)
+
+		db.DB.First(&sesh, "username = ?", data.Username)
+
+		log.Println(sesh)
 
 		c.JSON(200, struct {
-			Key string `json:"key"`
-		}{skey})
+			Key uuid.UUID `json:"key"`
+		}{sesh.Skey})
 	})
 
 	r.POST("/sync/meta", func(c *gin.Context) {
 
-		data, err := getSession(c)
-		if err != nil {
-			return
+		sesh, ok := getSession(c)
+		if !ok {
+			log.Fatal("Could not retrieve session")
 		}
 
-		collection := struct {
+		// Get collection
+		var col db.Col
+		db.DB.Where(&db.Col{Username: sesh.Username})
+
+		resp := struct {
 			Cont    bool   `json:"cont"`
 			HostNum int    `json:"hostNum"`
 			Mod     int    `json:"mod"`
@@ -117,26 +114,21 @@ func main() {
 		}{
 			true,
 			1,
-			0,
+			col.Mod,
 			"",
 			time.Now().Unix(),
-			0,
+			col.Usn,
 			time.Now().Unix(),
-			data.Username,
+			sesh.Username,
 		}
 
-		// Get collection
-		row := db.DB.QueryRow(`SELECT mod, scm, usn FROM col WHERE username=$1`, data.Username)
-		if err := row.Scan(&collection.Mod, &collection.Scm, &collection.Usn); err != nil && err != sql.ErrNoRows {
-			log.Fatal(err)
-		}
-		log.Printf("%+v", collection)
-		c.JSON(200, collection)
+		log.Printf("%+v", resp)
+		c.JSON(200, resp)
 	})
 
 	r.POST("/sync/upload", func(c *gin.Context) {
-		sesh, err := getSession(c)
-		if err != nil {
+		sesh, ok := getSession(c)
+		if !ok {
 			return
 		}
 
@@ -154,11 +146,12 @@ func main() {
 			// TODO: return http error code
 			return
 		}
+		defer os.Remove(f.Name())
 
 		// write transmitted db to tempfile
 		f.Write(b)
 
-		sqlite, err := sql.Open("sqlite3", f.Name())
+		sqlite, err := gorm.Open(sqlite2.Open(f.Name()))
 		if err != nil {
 			// TODO: actual error handling???
 			log.Println(err)
@@ -167,42 +160,47 @@ func main() {
 		// TODO: check integrity of sqlite file
 
 		// delete entries of user first
-		_, err = db.DB.Exec(`DELETE FROM cards WHERE username=$1`, sesh.Username)
-		if err != nil {
-			// TODO: error handling
-			log.Fatal(err)
-		}
-		rows, err := sqlite.Query(`SELECT * FROM cards;`)
-		if err != nil {
-			// TODO: error handling
-			log.Fatal(err)
-		}
-		defer rows.Close()
+		db.DB.Delete(&db.Col{}, "username = ?", sesh.Username)
+		db.DB.Delete(&db.Card{}, "username = ?", sesh.Username)
+		db.DB.Delete(&db.Note{}, "username = ?", sesh.Username)
+		db.DB.Delete(&db.Revlog{}, "username = ?", sesh.Username)
 
-		var cards []dbCard
-		scan.Rows(&cards, rows)
+		var cards []db.Card
+		var col db.Col
+
+		sqlite.Find(&cards)
 
 		for _, card := range cards {
-			// add card to user in our db
-			log.Println(card)
-			// TODO: for the love of god, refactor
-			db.DB.Exec(`INSERT INTO cards ( username, id, nid, did, ord, mod,
-					usn, type, queue, due, ivl, factor, reps, lapses,
-					"left", odue, odid, flags, data
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);`,
-				sesh.Username, card.Id, card.Nid, card.Did, card.Ord,
-				card.Mod, card.Usn, card.Type, card.Queue, card.Due, card.Ivl,
-				card.Factor, card.Reps, card.Lapses, card.Left, card.Odue, card.Odid, card.Flags, card.Data)
+			card.Username = sesh.Username
+			db.DB.Create(&card)
 		}
 
-		// TODO: the other tables, such as notes, col etc
+		sqlite.Find(&col)
+		col.Username = sesh.Username
+		db.DB.Create(&col)
 
-		///c.JSON(200, collection)
+		var notes []db.Note
+
+		sqlite.Find(&notes)
+
+		for _, note := range notes {
+			note.Username = sesh.Username
+			db.DB.Create(&note)
+		}
+
+		var revlogs []db.Revlog
+		sqlite.Find(&revlogs)
+
+		for _, rev := range revlogs {
+			rev.Username = sesh.Username
+			db.DB.Create(&rev)
+		}
+
 		c.String(200, "OK")
 	})
 
 	r.POST("/msync/begin", func(c *gin.Context) {
-		
+
 	})
 
 	srv := &http.Server{
@@ -227,22 +225,22 @@ func main() {
 	}
 }
 
-func getSession(c *gin.Context) (session, error) {
+func getSession(c *gin.Context) (db.Session, bool) {
 
 	providedKey := c.Request.FormValue("k")
 
-	var data session
+	var data db.Session
+	var ok bool
 
-	row := db.DB.QueryRow(`SELECT * FROM sessions WHERE skey=$1`, providedKey)
-	err := row.Scan(&data.Skey, &data.Username, &data.created)
-	if err != nil {
-		log.Fatal(err)
-		return session{}, err
+	db.DB.First(&data, "skey = ?", providedKey)
+
+	if data != (db.Session{}) {
+		ok = true
 	}
-	return data, nil
+	return data, ok
 }
 
-func getData(c *gin.Context, target interface{}) error {
+func getData(c *gin.Context) []byte {
 
 	file, _, _ := c.Request.FormFile("data")
 	var b []byte
@@ -251,8 +249,5 @@ func getData(c *gin.Context, target interface{}) error {
 	gr, _ := gzip.NewReader(file)
 	b, _ = ioutil.ReadAll(gr)
 
-	if err := json.Unmarshal(b, target); err != nil {
-		return err
-	}
-	return nil
+	return b
 }
