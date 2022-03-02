@@ -200,7 +200,29 @@ func main() {
 	})
 
 	r.POST("/msync/begin", func(c *gin.Context) {
+		sesh, ok := getSession(c)
+		if !ok {
+			// TODO: error handling
+			log.Fatal("Could not find session")
+		}
 
+		var col db.Col
+		db.DB.First(&col)
+
+		c.JSON(200,
+			struct {
+				Data struct {
+					Sk  uuid.UUID `json:"sk"`
+					Usn int       `json:"usn"`
+				} `json:"data"`
+				Err string `json:"err"`
+			}{
+				struct {
+					Sk  uuid.UUID `json:"sk"`
+					Usn int       `json:"usn"`
+				}{Sk: sesh.Skey, Usn: col.Usn},
+				"",
+			})
 	})
 
 	srv := &http.Server{
