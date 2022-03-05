@@ -233,9 +233,13 @@ func main() {
 		rawData := getData(c)
 		json.Unmarshal(rawData, &t)
 		// TODO: validate with own last media usn
-		var data []string
-		//resp = JsonResponse({"data": col.media_changes(data["lastUsn"]), "err": ""})
-		c.JSON(200, data)
+		data := []string{}
+		dat := struct {
+			Data []string `json:"data"`
+		}{
+			Data: data,
+		}
+		c.JSON(200, dat)
 
 	})
 
