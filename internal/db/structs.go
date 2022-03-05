@@ -25,14 +25,14 @@ func (sesh *Session) BeforeCreate(tx *gorm.DB) error {
 type Card struct {
 	Username string  `gorm:"primaryKey"`
 	Id       int     `gorm:"primaryKey"`
-	Nid      int     `gorm:"not null"`
-	Did      int     `gorm:"not null"`
+	Nid      int     `gorm:"not null" gorm:"index:ix_cards_nid"`
+	Did      int     `gorm:"not null" gorm:"index:ix_cards_sched"`
 	Ord      int     `gorm:"not null"`
 	Mod      int     `gorm:"not null"`
-	Usn      int     `gorm:"not null"`
+	Usn      int     `gorm:"not null" gorm:"index:ix_cards_usn "`
 	Type     int     `gorm:"not null"`
-	Queue    int     `gorm:"not null"`
-	Due      int     `gorm:"not null"`
+	Queue    int     `gorm:"not null" gorm:"index:ix_cards_sched"`
+	Due      int     `gorm:"not null" gorm:"index:ix_cards_sched"`
 	Ivl      float64 `gorm:"not null"`
 	Factor   int     `gorm:"not null"`
 	Reps     int     `gorm:"not null"`
@@ -71,11 +71,11 @@ type Note struct {
 	Guid     string `gorm:"not null"`
 	Mid      int    `gorm:"not null"`
 	Mod      int    `gorm:"not null"`
-	Usn      int    `gorm:"not null"`
+	Usn      int    `gorm:"not null" gorm:"index:ix_notes_usn"`
 	Tags     string `gorm:"not null"`
 	Flds     string `gorm:"not null"`
 	Sfld     string `gorm:"not null"`
-	Csum     int    `gorm:"not null"`
+	Csum     int    `gorm:"not null" gorm:"index:ix_notes_csum "`
 	Flags    int    `gorm:"not null"`
 	Data     string `gorm:"not null"`
 }
@@ -88,7 +88,7 @@ type Revlog struct {
 	Username string  `gorm:"primaryKey"`
 	Id       int     `gorm:"primaryKey"`
 	Iid      int     `gorm:"not null"`
-	Usn      int     `gorm:"not null"`
+	Usn      int     `gorm:"not null" gorm:"index:ix_revlog_usn"`
 	Ease     int     `gorm:"not null"`
 	Ivl      float64 `gorm:"not null"`
 	LastIvl  int     `gorm:"not null"`
