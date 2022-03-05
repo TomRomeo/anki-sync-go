@@ -264,8 +264,10 @@ func main() {
 func getSession(c *gin.Context) (db.Session, bool) {
 
 	providedKey := c.Request.FormValue("k")
-	log.Println(c.Request.FormValue("k"))
-	log.Println(c.Request.FormValue("sk"))
+
+	if providedKey == "" {
+		providedKey = c.Request.FormValue("sk")
+	}
 
 	var data db.Session
 	var ok bool
