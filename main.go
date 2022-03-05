@@ -169,11 +169,8 @@ func main() {
 		var col db.Col
 
 		sqlite.Find(&cards)
-
-		for _, card := range cards {
-			card.Username = sesh.Username
-			db.DB.Create(&card)
-		}
+		db.DB.Create(&cards)
+		db.DB.Model(db.Card{}).Where("1 = 1").Updates(db.Card{Username: sesh.Username})
 
 		sqlite.Find(&col)
 		col.Username = sesh.Username
@@ -182,19 +179,14 @@ func main() {
 		var notes []db.Note
 
 		sqlite.Find(&notes)
-
-		for _, note := range notes {
-			note.Username = sesh.Username
-			db.DB.Create(&note)
-		}
+		db.DB.Create(&notes)
+		db.DB.Model(db.Note{}).Where("1 = 1").Updates(db.Note{Username: sesh.Username})
 
 		var revlogs []db.Revlog
 		sqlite.Find(&revlogs)
 
-		for _, rev := range revlogs {
-			rev.Username = sesh.Username
-			db.DB.Create(&rev)
-		}
+		db.DB.CreateInBatches(&revlogs, 1000)
+		db.DB.Model(db.Revlog{}).Where("1 = 1").Updates(db.Revlog{Username: sesh.Username})
 
 		c.String(200, "OK")
 	})
@@ -225,6 +217,28 @@ func main() {
 			})
 	})
 
+	r.POST("/msync/mediaChanges", func(c *gin.Context) {
+		_, ok := getSession(c)
+		if !ok {
+			// TODO: error handling
+			log.Fatal("session not founddd")
+		}
+		var col db.Col
+		db.DB.First(&col)
+
+		t := struct {
+			LastUsn int `json:"lastUsn"`
+		}{}
+
+		rawData := getData(c)
+		json.Unmarshal(rawData, &t)
+		// TODO: validate with own last media usn
+		var data []string
+		//resp = JsonResponse({"data": col.media_changes(data["lastUsn"]), "err": ""})
+		c.JSON(200, data)
+
+	})
+
 	srv := &http.Server{
 		Addr:    ":27701",
 		Handler: r,
@@ -250,6 +264,8 @@ func main() {
 func getSession(c *gin.Context) (db.Session, bool) {
 
 	providedKey := c.Request.FormValue("k")
+	log.Println(c.Request.FormValue("k"))
+	log.Println(c.Request.FormValue("sk"))
 
 	var data db.Session
 	var ok bool
