@@ -100,3 +100,10 @@ type Revlog struct {
 func (c *Revlog) TableName() string {
 	return "revlog"
 }
+
+type Media struct {
+	Username string `gorm:"primaryKey"`
+	Fname    string `gorm:"primaryKey"`
+	Usn      int    `gorm:"not null"`
+	Csum     string `gorm:"not null"`
+}

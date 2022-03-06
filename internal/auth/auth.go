@@ -52,3 +52,9 @@ func createUserDir(username string) error {
 	}
 	return nil
 }
+
+func GetUserDir(username string) string {
+	userDir := path.Join(os.Getenv("ROOT_DIR"), os.Getenv("COLLECTION_DIR"), username)
+
+	return userDir
+}

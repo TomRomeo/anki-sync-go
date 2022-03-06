@@ -43,6 +43,7 @@ func Initialize() {
 	DB.AutoMigrate(&Card{})
 	DB.AutoMigrate(&Note{})
 	DB.AutoMigrate(&Revlog{})
+	DB.AutoMigrate(&Media{})
 
 	//db.Exec(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`)
 	//db.Exec(`

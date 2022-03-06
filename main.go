@@ -3,10 +3,13 @@ package main
 import (
 	"ankiSyncGo/internal/auth"
 	"ankiSyncGo/internal/db"
+	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
@@ -18,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"syscall"
 	"time"
 )
@@ -164,6 +168,7 @@ func main() {
 		db.DB.Delete(&db.Card{}, "username = ?", sesh.Username)
 		db.DB.Delete(&db.Note{}, "username = ?", sesh.Username)
 		db.DB.Delete(&db.Revlog{}, "username = ?", sesh.Username)
+		db.DB.Delete(&db.Media{}, "username = ?", sesh.Username)
 
 		var cards []db.Card
 		var col db.Col
@@ -242,6 +247,111 @@ func main() {
 		c.JSON(200, dat)
 
 	})
+	r.POST("/msync/uploadChanges", func(c *gin.Context) {
+
+		sesh, ok := getSession(c)
+		if !ok {
+			// TODO: error handling
+			log.Fatal("session not found")
+		}
+
+		// TODO: refactor getData()
+		file, _, _ := c.Request.FormFile("data")
+		b, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		usn := getLastMediaUsn()
+		oldUsn := usn
+
+		tmpZip, err := ioutil.TempFile("", "anki-sync-go-media")
+		ioutil.WriteFile(tmpZip.Name(), b, 666)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer os.Remove(tmpZip.Name())
+		zipReader, err := zip.OpenReader(tmpZip.Name())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		metaFile, err := zipReader.Open("_meta")
+		if err != nil {
+			log.Fatal(err)
+		}
+		metaFiles := [][]string{}
+		ordToFilename := map[string]string{}
+		metaFileContent, err := ioutil.ReadAll(metaFile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		json.Unmarshal(metaFileContent, &metaFiles)
+
+		filesToRemove := []string{}
+		filesToAdd := []db.Media{}
+
+		// if file does not have ordinal, delete that file
+		for _, f := range metaFiles {
+			if len(f) < 2 {
+				filesToRemove = append(filesToRemove, f[0])
+			}
+			ordToFilename[f[1]] = f[0]
+		}
+
+		for _, f := range zipReader.File {
+			if f.Name == "_meta" {
+				continue
+			}
+			mediaFile, err := f.Open()
+			if err != nil {
+				log.Fatal(err)
+			}
+			mediaFileContent, err := ioutil.ReadAll(mediaFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			// write media file
+			userDir := auth.GetUserDir(sesh.Username)
+			ioutil.WriteFile(path.Join(userDir, ordToFilename[f.Name]), mediaFileContent, 666)
+			usn++
+
+			media := db.Media{
+				Username: sesh.Username,
+				Fname:    ordToFilename[f.Name],
+				Usn:      usn,
+				Csum:     checksum(mediaFileContent),
+			}
+
+			filesToAdd = append(filesToAdd, media)
+
+			// write media to media db
+			db.DB.Create(&f)
+		}
+
+		processedFiles := len(filesToRemove) + len(filesToAdd)
+
+		if len(metaFiles) != processedFiles {
+			log.Fatal(err)
+		}
+
+		// delete removed files
+		for _, f := range filesToRemove {
+			os.Remove(path.Join(auth.GetUserDir(sesh.Username), f))
+		}
+
+		if getLastMediaUsn() != oldUsn+processedFiles {
+			log.Fatal("Wrong usn")
+		}
+		c.JSON(200, struct {
+			Data  []int  `json:"data"`
+			Error string `json:"error"`
+		}{
+			Data:  []int{processedFiles, usn},
+			Error: "",
+		})
+
+	})
 
 	srv := &http.Server{
 		Addr:    ":27701",
@@ -294,4 +404,18 @@ func getData(c *gin.Context) []byte {
 	b, _ = ioutil.ReadAll(gr)
 
 	return b
+}
+
+func checksum(data []byte) string {
+	h := sha1.New()
+	h.Write(data)
+	sum := h.Sum(nil)
+	return fmt.Sprintf("%x", sum)
+}
+
+func getLastMediaUsn() int {
+	usn := 0
+	rw := db.DB.Model(&db.Media{}).Where("1 = 1").Select("max(usn)").Row()
+	rw.Scan(&usn)
+	return usn
 }
