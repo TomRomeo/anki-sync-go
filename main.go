@@ -329,6 +329,9 @@ func main() {
 			db.DB.Create(&media)
 		}
 
+		// TODO: only for debugging with ngrok
+		//time.Sleep(5 * time.Second)
+
 		processedFiles := len(filesToRemove) + len(filesToAdd)
 
 		if len(metaFiles) != processedFiles {
@@ -350,6 +353,41 @@ func main() {
 			Data:  []int{processedFiles, usn},
 			Error: "",
 		})
+
+	})
+	r.POST("/msync/mediaSanity", func(c *gin.Context) {
+		sesh, ok := getSession(c)
+		if !ok {
+			log.Fatal("session not found")
+		}
+
+		data := getData(c)
+		t := struct {
+			Local int64 `json:"local"`
+		}{}
+		json.Unmarshal(data, &t)
+		remoteMediaCount := t.Local
+
+		var ownMediaCount int64 = 0
+		db.DB.Find(&db.Media{}, "username = ?", sesh.Username).Count(&ownMediaCount)
+		
+		if ownMediaCount == remoteMediaCount {
+			c.JSON(200, struct {
+				Data string `json:"data"`
+				Err  string `json:"error"`
+			}{
+				"OK",
+				"",
+			})
+		} else {
+			c.JSON(200, struct {
+				Data string `json:"data"`
+				Err  string `json:"error"`
+			}{
+				"FAILED",
+				"",
+			})
+		}
 
 	})
 
