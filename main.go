@@ -326,7 +326,7 @@ func main() {
 			filesToAdd = append(filesToAdd, media)
 
 			// write media to media db
-			db.DB.Create(&f)
+			db.DB.Create(&media)
 		}
 
 		processedFiles := len(filesToRemove) + len(filesToAdd)
