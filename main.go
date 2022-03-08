@@ -318,10 +318,10 @@ func main() {
 
 			media := db.Media{
 				Username: sesh.Username,
-				Fname:    ordToFilename[f.Name],
-				Usn:      usn,
-				Csum:     checksum(mediaFileContent),
 			}
+			media.Fname = ordToFilename[f.Name]
+			media.Usn = usn
+			media.Csum = checksum(mediaFileContent)
 
 			filesToAdd = append(filesToAdd, media)
 
@@ -370,7 +370,7 @@ func main() {
 
 		var ownMediaCount int64 = 0
 		db.DB.Find(&db.Media{}, "username = ?", sesh.Username).Count(&ownMediaCount)
-		
+
 		if ownMediaCount == remoteMediaCount {
 			c.JSON(200, struct {
 				Data string `json:"data"`
@@ -389,6 +389,58 @@ func main() {
 			})
 		}
 
+	})
+
+	r.POST("/sync/download", func(c *gin.Context) {
+		sesh, ok := getSession(c)
+		if !ok {
+			log.Fatal("Session not found")
+		}
+
+		// create tmp database
+		f, err := ioutil.TempFile("", "anki-sync-go")
+		if err != nil {
+			// TODO: return http error code
+			return
+		}
+		defer os.Remove(f.Name())
+
+		sqlite, err := gorm.Open(sqlite2.Open(f.Name()))
+		if err != nil {
+			// TODO: actual error handling???
+			log.Println(err)
+		}
+
+		sqlite.AutoMigrate(&db.SQLiteCol{})
+		sqlite.AutoMigrate(&db.SQLiteCard{})
+		sqlite.AutoMigrate(&db.SQLiteNote{})
+		sqlite.AutoMigrate(&db.SQLiteRevlog{})
+		sqlite.AutoMigrate(&db.SQLiteMedia{})
+
+		var cards []db.SQLiteCard
+		var col db.SQLiteCol
+
+		db.DB.Find(&cards, "username = ?", sesh.Username)
+		sqlite.Create(&cards)
+
+		db.DB.Find(&col, "username = ?", sesh.Username)
+		sqlite.Create(&col)
+
+		var notes []db.SQLiteNote
+
+		db.DB.Find(&notes, "username = ?", sesh.Username)
+		sqlite.Create(&notes)
+
+		var revlogs []db.SQLiteRevlog
+		db.DB.Find(&revlogs, "username = ?", sesh.Username)
+
+		sqlite.CreateInBatches(&revlogs, 1000)
+
+		data, err := ioutil.ReadAll(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.String(200, string(data))
 	})
 
 	srv := &http.Server{
