@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -223,7 +224,7 @@ func main() {
 	})
 
 	r.POST("/msync/mediaChanges", func(c *gin.Context) {
-		_, ok := getSession(c)
+		sesh, ok := getSession(c)
 		if !ok {
 			// TODO: error handling
 			log.Fatal("session not founddd")
@@ -238,11 +239,22 @@ func main() {
 		rawData := getData(c)
 		json.Unmarshal(rawData, &t)
 		// TODO: validate with own last media usn
-		data := []string{}
+		serverLastUsn := getLastMediaUsn()
+
+		// get changes since last sync
+		var missingMedia []db.SQLiteMedia
+		outputFormattedMedia := [][]string{}
+		if t.LastUsn < serverLastUsn || t.LastUsn == 0 {
+			db.DB.Find(&missingMedia, "username = ? AND usn > ?", sesh.Username, t.LastUsn)
+		}
+		for _, media := range missingMedia {
+			outputFormattedMedia = append(outputFormattedMedia, []string{media.Fname, strconv.FormatInt(int64(media.Usn), 10), media.Csum})
+		}
+
 		dat := struct {
-			Data []string `json:"data"`
+			Data [][]string `json:"data"`
 		}{
-			Data: data,
+			Data: outputFormattedMedia,
 		}
 		c.JSON(200, dat)
 
