@@ -96,11 +96,13 @@ func main() {
 		}{sesh.Skey})
 	})
 
-	r.POST("/sync/meta", func(c *gin.Context) {
+	r.POST("/sync/meta", sessionMiddleware, func(c *gin.Context) {
 
-		sesh, ok := getSession(c)
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
 		if !ok {
-			log.Fatal("Could not retrieve session")
+			c.String(401, "Malformed Session")
+			return
 		}
 
 		// Get collection
@@ -131,9 +133,11 @@ func main() {
 		c.JSON(200, resp)
 	})
 
-	r.POST("/sync/upload", func(c *gin.Context) {
-		sesh, ok := getSession(c)
+	r.POST("/sync/upload", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
 		if !ok {
+			c.String(401, "Malformed Session")
 			return
 		}
 
@@ -197,11 +201,12 @@ func main() {
 		c.String(200, "OK")
 	})
 
-	r.POST("/msync/begin", func(c *gin.Context) {
-		sesh, ok := getSession(c)
+	r.POST("/msync/begin", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
 		if !ok {
-			// TODO: error handling
-			log.Fatal("Could not find session")
+			c.String(401, "Malformed Session")
+			return
 		}
 
 		var col db.Col
@@ -223,12 +228,14 @@ func main() {
 			})
 	})
 
-	r.POST("/msync/mediaChanges", func(c *gin.Context) {
-		sesh, ok := getSession(c)
+	r.POST("/msync/mediaChanges", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
 		if !ok {
-			// TODO: error handling
-			log.Fatal("session not founddd")
+			c.String(401, "Malformed Session")
+			return
 		}
+
 		var col db.Col
 		db.DB.First(&col)
 
@@ -259,12 +266,12 @@ func main() {
 		c.JSON(200, dat)
 
 	})
-	r.POST("/msync/uploadChanges", func(c *gin.Context) {
-
-		sesh, ok := getSession(c)
+	r.POST("/msync/uploadChanges", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
 		if !ok {
-			// TODO: error handling
-			log.Fatal("session not found")
+			c.String(401, "Malformed Session")
+			return
 		}
 
 		// TODO: refactor getData()
@@ -367,10 +374,12 @@ func main() {
 		})
 
 	})
-	r.POST("/msync/mediaSanity", func(c *gin.Context) {
-		sesh, ok := getSession(c)
+	r.POST("/msync/mediaSanity", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
 		if !ok {
-			log.Fatal("session not found")
+			c.String(401, "Malformed Session")
+			return
 		}
 
 		data := getData(c)
@@ -403,10 +412,12 @@ func main() {
 
 	})
 
-	r.POST("/sync/download", func(c *gin.Context) {
-		sesh, ok := getSession(c)
+	r.POST("/sync/download", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
 		if !ok {
-			log.Fatal("Session not found")
+			c.String(401, "Malformed Session")
+			return
 		}
 
 		// create tmp database
@@ -477,7 +488,7 @@ func main() {
 	}
 }
 
-func getSession(c *gin.Context) (db.Session, bool) {
+func sessionMiddleware(c *gin.Context) {
 
 	providedKey := c.Request.FormValue("k")
 
@@ -486,14 +497,15 @@ func getSession(c *gin.Context) (db.Session, bool) {
 	}
 
 	var data db.Session
-	var ok bool
 
 	db.DB.First(&data, "skey = ?", providedKey)
 
-	if data != (db.Session{}) {
-		ok = true
+	if data == (db.Session{}) {
+		c.String(401, "Could not find session")
+		return
 	}
-	return data, ok
+	c.Set("session", data)
+	c.Next()
 }
 
 func getData(c *gin.Context) []byte {
