@@ -16,6 +16,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 	sqlite2 "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -464,6 +465,88 @@ func main() {
 			log.Fatal(err)
 		}
 		c.String(200, string(data))
+	})
+
+	r.POST("/msync/downloadFiles", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
+		if !ok {
+			c.String(401, "Malformed Session")
+			return
+		}
+
+		data := getData(c)
+
+		requestedFiles := struct {
+			Files []string `json:"files"`
+		}{}
+
+		// used to write _meta file
+		//
+		// format:
+		// i: filename
+		fileList := map[string]string{}
+
+		if err := json.Unmarshal(data, &requestedFiles); err != nil {
+			c.String(500, "Could not parse given file list")
+			return
+		}
+
+		tmpZip, err := ioutil.TempFile("", "anki-sync-go-media")
+		if err != nil {
+			c.String(500, "Could not create media zip file")
+			return
+		}
+		defer os.Remove(tmpZip.Name())
+		zipWriter := zip.NewWriter(tmpZip)
+		defer zipWriter.Close()
+
+		userDir := auth.GetUserDir(sesh.Username)
+		if userDir == "" {
+			c.String(400, "No media data found for this user")
+			return
+		}
+
+		for i, requestedFileName := range requestedFiles.Files {
+			mediaFile, err := os.Open(path.Join(userDir, requestedFileName))
+			if err != nil {
+				c.String(500, "Could not find requested media file: ", requestedFileName)
+				return
+			}
+			defer mediaFile.Close()
+
+			zipMediaFile, err := zipWriter.Create(strconv.FormatInt(int64(i), 10))
+			if err != nil {
+				c.String(500, "Could not create requested mediaFile in zip: ", requestedFileName)
+				return
+			}
+			if _, err := io.Copy(zipMediaFile, mediaFile); err != nil {
+				c.String(500, "Could not copy requested mediaFile to zip: ", requestedFileName)
+				return
+			}
+
+			fileList[strconv.FormatInt(int64(i), 10)] = requestedFileName
+		}
+
+		// write meta file:
+		zf, err := zipWriter.Create("_meta")
+		if err != nil {
+			c.String(500, "Error when preparing zip file")
+			return
+		}
+		bytes, err := json.Marshal(&fileList)
+		if err != nil {
+			c.String(400, "Could not parse file list")
+			return
+		}
+
+		if _, err := zf.Write(bytes); err != nil {
+			c.String(500, "An error occurred while writing the _meta file")
+			return
+		}
+		zipWriter.Close()
+
+		c.File(tmpZip.Name())
 	})
 
 	srv := &http.Server{
