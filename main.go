@@ -108,14 +108,14 @@ func main() {
 
 		// Get collection
 		var col db.Col
-		db.DB.Where(&db.Col{Username: sesh.Username})
+		db.DB.Find(&col, "username = ?", sesh.Username)
 
 		resp := struct {
 			Cont    bool   `json:"cont"`
 			HostNum int    `json:"hostNum"`
 			Mod     int    `json:"mod"`
 			Msg     string `json:"msg"`
-			Scm     int64  `json:"scm"`
+			Scm     int    `json:"scm"`
 			Usn     int    `json:"usn"`
 			Ts      int64  `json:"ts"`
 			Uname   string `json:"uname"`
@@ -124,7 +124,7 @@ func main() {
 			1,
 			col.Mod,
 			"",
-			time.Now().Unix(),
+			col.Scm,
 			col.Usn,
 			time.Now().Unix(),
 			sesh.Username,
