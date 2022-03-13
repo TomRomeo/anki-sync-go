@@ -154,3 +154,21 @@ type SQLiteMedia struct {
 func (m *SQLiteMedia) TableName() string {
 	return "media"
 }
+
+type Graves struct {
+	Username string `gorm:"not null"`
+	SQLiteGraves
+}
+type SQLiteGraves struct {
+	Usn  int `gorm:"not null"`
+	Oid  int `gorm:"not null"`
+	Type int `gorm:"not null"`
+}
+
+func (m *SQLiteGraves) TableName() string {
+	return "graves"
+}
+
+func (m *Graves) TableName() string {
+	return "graves"
+}

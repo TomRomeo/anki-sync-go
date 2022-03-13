@@ -440,6 +440,7 @@ func main() {
 		sqlite.AutoMigrate(&db.SQLiteNote{})
 		sqlite.AutoMigrate(&db.SQLiteRevlog{})
 		sqlite.AutoMigrate(&db.SQLiteMedia{})
+		sqlite.AutoMigrate(&db.SQLiteGraves{})
 
 		var cards []db.SQLiteCard
 		var col db.SQLiteCol
@@ -454,6 +455,11 @@ func main() {
 
 		db.DB.Find(&notes, "username = ?", sesh.Username)
 		sqlite.Create(&notes)
+
+		var graves []db.SQLiteGraves
+
+		db.DB.Find(&graves, "username = ?", sesh.Username)
+		sqlite.Create(&graves)
 
 		var revlogs []db.SQLiteRevlog
 		db.DB.Find(&revlogs, "username = ?", sesh.Username)
