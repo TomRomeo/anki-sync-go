@@ -279,7 +279,8 @@ func main() {
 		file, _, _ := c.Request.FormFile("data")
 		b, err := ioutil.ReadAll(file)
 		if err != nil {
-			log.Fatal(err)
+			c.String(400, "Error parsing the submitted formfile")
+			return
 		}
 		usn := getLastMediaUsn()
 		oldUsn := usn
@@ -287,23 +288,27 @@ func main() {
 		tmpZip, err := ioutil.TempFile("", "anki-sync-go-media")
 		ioutil.WriteFile(tmpZip.Name(), b, 666)
 		if err != nil {
-			log.Fatal(err)
+			c.String(500, "Could not create temporary zip file")
+			return
 		}
 		defer os.Remove(tmpZip.Name())
 		zipReader, err := zip.OpenReader(tmpZip.Name())
 		if err != nil {
-			log.Fatal(err)
+			c.String(500, "Could not create temporary zip file")
+			return
 		}
 
 		metaFile, err := zipReader.Open("_meta")
 		if err != nil {
-			log.Fatal(err)
+			c.String(500, "Could not create temporary zip file")
+			return
 		}
 		metaFiles := [][]string{}
 		ordToFilename := map[string]string{}
 		metaFileContent, err := ioutil.ReadAll(metaFile)
 		if err != nil {
-			log.Fatal(err)
+			c.String(500, "Could not create temporary zip file")
+			return
 		}
 		json.Unmarshal(metaFileContent, &metaFiles)
 
@@ -324,11 +329,13 @@ func main() {
 			}
 			mediaFile, err := f.Open()
 			if err != nil {
-				log.Fatal(err)
+				c.String(500, "Could not find media file")
+				return
 			}
 			mediaFileContent, err := ioutil.ReadAll(mediaFile)
 			if err != nil {
-				log.Fatal(err)
+				c.String(500, "Could not read media file")
+				return
 			}
 
 			// write media file
@@ -355,7 +362,8 @@ func main() {
 		processedFiles := len(filesToRemove) + len(filesToAdd)
 
 		if len(metaFiles) != processedFiles {
-			log.Fatal(err)
+			c.String(400, "Sanity check failed")
+			return
 		}
 
 		// delete removed files
@@ -364,7 +372,8 @@ func main() {
 		}
 
 		if getLastMediaUsn() != oldUsn+processedFiles {
-			log.Fatal("Wrong usn")
+			c.String(500, "Sanity check failed")
+			return
 		}
 		c.JSON(200, struct {
 			Data  []int  `json:"data"`
@@ -468,7 +477,8 @@ func main() {
 
 		data, err := ioutil.ReadAll(f)
 		if err != nil {
-			log.Fatal(err)
+			c.String(500, "Error when syncing")
+			return
 		}
 		c.String(200, string(data))
 	})
