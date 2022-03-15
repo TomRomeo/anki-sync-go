@@ -134,6 +134,27 @@ func main() {
 		c.JSON(200, resp)
 	})
 
+	r.POST("/sync/start", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		_, ok := s.(db.Session)
+		if !ok {
+			c.String(401, "Malformed Session")
+			return
+		}
+
+		data := getData(c)
+		log.Println(string(data))
+		c.JSON(200, struct {
+			Cards []string `json:"cards"`
+			Notes []string `json:"notes"`
+			Decks []string `json:"decks"`
+		}{
+			[]string{},
+			[]string{},
+			[]string{},
+		})
+
+	})
 	r.POST("/sync/upload", sessionMiddleware, func(c *gin.Context) {
 		s, _ := c.Get("session")
 		sesh, ok := s.(db.Session)
