@@ -634,8 +634,12 @@ func getData(c *gin.Context) []byte {
 	var b []byte
 
 	// decompress if compressed
-	gr, _ := gzip.NewReader(file)
-	b, _ = ioutil.ReadAll(gr)
+	if c.Request.FormValue("c") != "" {
+		gr, _ := gzip.NewReader(file)
+		b, _ = ioutil.ReadAll(gr)
+	} else {
+		b, _ = ioutil.ReadAll(file)
+	}
 
 	return b
 }
