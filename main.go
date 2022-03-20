@@ -155,6 +155,186 @@ func main() {
 		})
 
 	})
+
+	r.POST("/sync/applyChanges", sessionMiddleware, func(c *gin.Context) {
+		s, _ := c.Get("session")
+		sesh, ok := s.(db.Session)
+		if !ok {
+			c.String(401, "Malformed Session")
+			return
+		}
+
+		data := getData(c)
+		log.Println(string(data))
+
+		// TODO: merge changes
+		// merge decks, models, cards
+
+		userColumn := db.Col{}
+		db.DB.Find(&userColumn, "username = ?", sesh.Username)
+
+		type Model struct {
+			Sortf     int      `json:"sortf"`
+			Did       int      `json:"did"`
+			LatexPre  string   `json:"latexPre"`
+			LatexPost string   `json:"latexPost"`
+			Mod       int      `json:"mod"`
+			Usn       int      `json:"usn"`
+			Vers      []string `json:"vers"`
+			Type      int      `json:"type"`
+			Css       string   `json:"css"`
+			Name      string   `json:"name"`
+			Flds      []struct {
+				Name   string   `json:"name"`
+				Ord    int      `json:"ord"`
+				Sticky bool     `json:"sticky"`
+				RTL    bool     `json:"rtl"`
+				Font   string   `json:"font"`
+				Size   int      `json:"size"`
+				Media  []string `json:"media"`
+			} `json:"flds"`
+			Tmpls []struct {
+				Name  string `json:"name"`
+				Ord   int    `json:"ord"`
+				Qfmt  string `json:"qfmt"`
+				Did   int    `json:"did"`
+				Bqfmt string `json:"bqfmt"`
+				Bafmt string `json:"bafmt"`
+				Bfont string `json:"bfont"`
+				Bsize int    `json:"bsize"`
+			} `json:"tmpls"`
+			Tags []string        `json:"tags"`
+			Id   int             `json:"id"`
+			Req  [][]interface{} // one list consists of int, string, []int
+		}
+
+		modelsMap := map[int]Model{}
+		json.Unmarshal([]byte(userColumn.Models), &modelsMap)
+
+		// TODO: send updated models n' stuff
+
+		list := []Model{}
+		for _, v := range modelsMap {
+			list = append(list, v)
+		}
+
+		log.Printf("Decks@")
+		log.Println(userColumn.Decks)
+		type Deck struct {
+			NewToday  []int  `json:"newToday"`
+			RevToday  []int  `json:"revToday"`
+			LrnToday  []int  `json:"lrnToday"`
+			TimeToday []int  `json:"timeToday"`
+			Conf      int    `json:"conf"`
+			Usn       int    `json:"usn"`
+			Desc      string `json:"desc"`
+			Dyn       int    `json:"dyn"`
+			Collapsed bool   `json:"collapsed"`
+			ExtendNew int    `json:"extendNew"`
+			ExtendRev int    `json:"extendRev"`
+			Id        int    `json:"id"`
+			Name      string `json:"name"`
+			Mod       int    `json:"mod"`
+		}
+		decksMap := map[int]Deck{}
+		json.Unmarshal([]byte(userColumn.Decks), &decksMap)
+
+		listDecks := []interface{}{}
+		for _, v := range decksMap {
+			listDecks = append(listDecks, v)
+		}
+
+		type DConf struct {
+			Name string `json:"name"`
+			New  struct {
+				Delays        []int `json:"delays"`
+				Ints          []int `json:"ints"`
+				InitialFactor int   `json:"initialFactor"`
+				Seperate      bool  `json:"seperate"`
+				Order         int   `json:"order"`
+				PerDay        int   `json:"perDay"`
+				Bury          bool  `json:"bury"`
+			} `json:"new"`
+			Lapse struct {
+				Delays      []int `json:"delays"`
+				Multi       int   `json:"multi"`
+				MinInt      int   `json:"minInt"`
+				LeechFails  int   `json:"leechFails"`
+				leechAction int   `json:"leechAction"`
+			} `json:"lapse"`
+			Mult        int `json:"mult"`
+			MinInt      int `json:"minInt"`
+			LeechFails  int `json:"leechFails"`
+			LeechAction int `json:"leechAction"`
+			Rev         struct {
+				PerDay   int     `json:"perDay"`
+				Ease4    float64 `json:"ease4"`
+				Fuzz     float64 `json:"fuzz"`
+				MinSpace int     `json:"minSpace"`
+				IvlFct   int     `json:"ivlFct"`
+				MaxIvl   int     `json:"maxIvl"`
+				Bury     bool    `json:"bury"`
+			} `json:"rev"`
+			MaxTaken int  `json:"maxTaken"`
+			Timer    int  `json:"timer"`
+			AutoPlay bool `json:"autoPlay"`
+			Replayq  bool `json:"replayq"`
+			Mod      int  `json:"mod"`
+			Usn      int  `json:"usn"`
+			Id       int  `json:"id"`
+			Dyn      int  `json:"dyn"`
+		}
+
+		dConfMap := map[int]DConf{}
+		json.Unmarshal([]byte(userColumn.Dconf), &dConfMap)
+
+		listDConfs := []interface{}{}
+		for _, v := range dConfMap {
+			listDConfs = append(listDConfs, v)
+		}
+
+		type Conf struct {
+			ActiveDecks    []int  `json:"activeDecks"`
+			CurDeck        int    `json:"curDeck"`
+			NewSpread      int    `json:"newSpread"`
+			CollapsedTime  int    `json:"collapsedTime"`
+			TimeLim        int    `json:"timeLim"`
+			EstTimes       bool   `json:"estTimes"`
+			DueCounts      bool   `json:"dueCounts"`
+			CurModel       int    `json:"curModel"`
+			NextPost       int    `json:"nextPost"`
+			SortType       string `json:"sortType"`
+			SortBackwards  bool   `json:"sortBackwards"`
+			AddToCur       bool   `json:"addToCur"`
+			NewBury        bool   `json:"newBury"`
+			CreationOffset int    `json:"creationOffset"`
+			SchedVer       int    `json:"schedVer"`
+			LocalOffset    int    `json:"localOffset"`
+		}
+		conf := Conf{}
+		json.Unmarshal([]byte(userColumn.Conf), &conf)
+
+		t := struct {
+			Models []Model         `json:"models"`
+			Decks  [][]interface{} `json:"decks"`
+			Tags   []string        `json:"tags"`
+			Conf   Conf            `json:"conf"`
+			Crt    int             `json:"crt"`
+		}{
+			list,
+			[][]interface {
+			}{
+				listDecks,
+				listDConfs,
+			},
+			[]string{},
+			conf,
+			userColumn.Crt,
+		}
+
+		c.JSON(200, t)
+	})
+
 	r.POST("/sync/upload", sessionMiddleware, func(c *gin.Context) {
 		s, _ := c.Get("session")
 		sesh, ok := s.(db.Session)
